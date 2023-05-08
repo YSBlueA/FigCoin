@@ -2,5 +2,26 @@
   "dependencies": {
     "crypto-js": "^4.1.1",
     "elliptic": "^6.5.4"
-  }
+  },
+  "name": "figblockchain",
+  "version": "1.0.0",
+  "main": "src/blockchain.js",
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YSBlueA/FigCoin.git"
+  },
+  "keywords": [
+    "blockchain"
+  ],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/YSBlueA/FigCoin/issues"
+  },
+  "homepage": "https://github.com/YSBlueA/FigCoin#readme",
+  "description": ""
 }
