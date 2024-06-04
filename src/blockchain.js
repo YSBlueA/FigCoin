@@ -1,6 +1,21 @@
 const SHA256 = require('crypto-js/sha256');
 const EC = require('elliptic').ec;
 const ec = new EC('secp256k1');
+const fs = require('fs');
+const levelup = require('levelup');
+const leveldown = require('leveldown');
+const path = require('path');
+
+const BLOCKS_DIR = path.join(__dirname, '../blocks');
+const DATA_DIR = path.join(__dirname, '../data');
+
+if(!fs.existsSync(BLOCKS_DIR)) {
+    fs.mkdirSync(BLOCKS_DIR);
+}
+
+if(!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR);
+}
 
 class Transaction{
     constructor(fromAddress, toAddress, amount) {
@@ -71,10 +86,20 @@ class Block {
 
 class Blockchain{
     constructor() {
-        this.chain = [this.createGenesisBlock()]; 
+        this.db = levelup(leveldown('./data/blockchain-db'));
+        this.chain = []; 
         this.difficulty = 2;
         this.pendingTransactions = [];
         this.miningReward = 100;
+    }
+
+    async init() {
+        await this.loadBlockchain();
+        if (this.chain.length === 0) {
+            const genesisBlock = this.createGenesisBlock();
+            this.chain.push(genesisBlock);
+            await this.saveBlock(genesisBlock);
+        }
     }
 
     createGenesisBlock() {
@@ -85,7 +110,7 @@ class Blockchain{
         return this.chain[this.chain.length -1];
     }
 
-    minePendingTransactions(miningRewardAddress) {
+    async minePendingTransactions(miningRewardAddress) {
         const rewardTx = new Transaction(null, miningRewardAddress, this.miningReward);
         this.pendingTransactions.push(rewardTx);
 
@@ -96,9 +121,10 @@ class Blockchain{
         this.chain.push(block);
 
         this.pendingTransactions = [];
+        await this.saveBlock(block);
     }
 
-    addTransaction(transaction) {
+    async addTransaction(transaction) {
         if(!transaction.fromAddress || !transaction.toAddress) {
             throw new Error('Transaction must include from and to address');
         }
@@ -110,7 +136,7 @@ class Blockchain{
         this.pendingTransactions.push(transaction);
     }
 
-    getBalanceOfAddress(address) {
+    async getBalanceOfAddress(address) {
         let balance = 0;
         for(const block of this.chain) {
             for(const trans of block.transactions) {
@@ -126,7 +152,7 @@ class Blockchain{
         return balance;
     }
 
-    isChainValid() {
+    async isChainValid() {
         for(let i = 1; i<this.chain.length; i++)
         {
             const currentBlock = this.chain[i];
@@ -145,6 +171,43 @@ class Blockchain{
             }
         }
         return true;
+    }
+
+    async saveBlock(block) {
+        const blockKey = `block-${block.hash}`;
+        await this.db.put(blockKey, JSON.stringify(block));
+
+        const chainKey = 'chain';
+        await this.db.put(chainKey, JSON.stringify(this.chain));
+
+        const blockFilePath = path.join(BLOCKS_DIR, `${block.hash}.json`);
+        fs.writeFileSync(blockFilePath, JSON.stringify(block, null, 4));
+    }
+
+    async loadBlockchain() {
+        try {
+            const chainKey = 'chain';
+            const chainData = await this.db.get(chainKey);
+            const parsedChain = JSON.parse(chainData);
+    
+            this.chain = parsedChain.map(blockData => {
+                let transactions = [];
+                if (Array.isArray(blockData.transactions)) {
+                    transactions = blockData.transactions.map(txData => {
+                        const tx = new Transaction(txData.fromAddress, txData.toAddress, txData.amount);
+                        tx.signature = txData.signature;
+                        return tx;
+                    });
+                }
+    
+                const block = new Block(blockData.timestamp, transactions, blockData.previousHash);
+                block.hash = blockData.hash;
+                block.nonce = blockData.nonce;
+                return block;
+            });
+        } catch (error) {
+            console.log('No blockchain found, creating new one. ', error);
+        }
     }
 }
 
